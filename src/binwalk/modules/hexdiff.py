@@ -1,4 +1,3 @@
-import os
 import sys
 import string
 import binwalk.core.common as common
@@ -18,6 +17,7 @@ class HexDiff(Module):
     DEFAULT_BLOCK_SIZE = 16
 
     SKIPPED_LINE = "*"
+    SAME_DIFFERENCE = "~"
     CUSTOM_DISPLAY_FORMAT = "0x%.8X    %s"
 
     TITLE = "Binary Diffing"
@@ -39,6 +39,10 @@ class HexDiff(Module):
                long='blue',
                kwargs={'show_blue': True},
                description='Only show lines containing bytes that are different among some files'),
+        Option(short='u',
+               long='similar',
+               kwargs={'show_same': True},
+               description='Only display lines that are the same between all files'),
         Option(short='w',
                long='terse',
                kwargs={'terse': True},
@@ -50,6 +54,7 @@ class HexDiff(Module):
         Kwarg(name='show_blue', default=False),
         Kwarg(name='show_green', default=False),
         Kwarg(name='terse', default=False),
+        Kwarg(name='show_same', default=False),
         Kwarg(name='enabled', default=False),
     ]
 
@@ -114,6 +119,7 @@ class HexDiff(Module):
         return (hexbyte, asciibyte)
 
     def diff_files(self, target_files):
+        last_raw_line = None
         last_line = None
         loop_count = 0
         sep_count = 0
@@ -127,6 +133,7 @@ class HexDiff(Module):
 
         while True:
             line = ""
+            current_raw_line = ""
             done_files = 0
             block_data = {}
             seperator = self.SEPERATORS[sep_count % 2]
@@ -149,8 +156,7 @@ class HexDiff(Module):
                         hexbyte = "XX"
                         asciibyte = "."
                     else:
-                        (hexbyte, asciibyte) = self.hexascii(
-                            block_data, block_data[fp][i], i)
+                        (hexbyte, asciibyte) = self.hexascii(block_data, block_data[fp][i], i)
 
                     hexline += "%s " % hexbyte
                     asciiline += "%s" % asciibyte
@@ -161,20 +167,30 @@ class HexDiff(Module):
                     break
 
                 if fp != target_files[-1]:
+                    # Need to keep a copy of the line data without the seperator, since the sep changes
+                    # every other line. This allows us to compare one raw line to a previous raw line to
+                    # see if they are the same.
+                    current_raw_line += line
                     line += " %s " % seperator
 
             offset = fp.offset + (self.block * loop_count)
 
-            if not self._color_filter(line):
+            if current_raw_line == last_raw_line and self.show_same == True:
+                display = line = self.SAME_DIFFERENCE
+            elif not self._color_filter(line):
                 display = line = self.SKIPPED_LINE
             else:
                 display = self.CUSTOM_DISPLAY_FORMAT % (offset, line)
                 sep_count += 1
 
-            if line != self.SKIPPED_LINE or last_line != line:
+            if (line not in [self.SKIPPED_LINE, self.SAME_DIFFERENCE] or
+                    (last_line != line and
+                        (last_line not in [self.SKIPPED_LINE, self.SAME_DIFFERENCE] or
+                         line not in [self.SKIPPED_LINE, self.SAME_DIFFERENCE]))):
                 self.result(offset=offset, description=line, display=display)
 
             last_line = line
+            last_raw_line = current_raw_line
             loop_count += 1
             self.status.completed += self.block
 

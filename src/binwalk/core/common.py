@@ -50,6 +50,13 @@ def error(msg):
     sys.stderr.write("\nERROR: " + msg + "\n")
 
 
+def critical(msg):
+    '''
+    Prints critical messages to stderr
+    '''
+    sys.stderr.write("\nCRITICAL: " + msg + "\n")
+
+
 def get_module_path():
     root = __file__
     if os.path.islink(root):
@@ -99,11 +106,11 @@ def file_size(filename):
         os.close(fd)
 
 
-def strip_quoted_strings(string):
+def strip_quoted_strings(quoted_string):
     '''
     Strips out data in between double quotes.
 
-    @string - String to strip.
+    @quoted_string - String to strip.
 
     Returns a sanitized string.
     '''
@@ -113,14 +120,14 @@ def strip_quoted_strings(string):
     # double quotes, and this function should ignore those. However, it also means that any
     # data between two quoted strings (ex: '"quote 1" you won't see me "quote
     # 2"') will also be stripped.
-    return re.sub(r'\"(.*)\"', "", string)
+    return re.sub(r'\"(.*)\"', "", quoted_string)
 
 
-def get_quoted_strings(string):
+def get_quoted_strings(quoted_string):
     '''
     Returns a string comprised of all data in between double quotes.
 
-    @string - String to get quoted data from.
+    @quoted_string - String to get quoted data from.
 
     Returns a string of quoted data on success.
     Returns a blank string if no quoted data is present.
@@ -132,7 +139,7 @@ def get_quoted_strings(string):
         # double quotes, and this function should ignore those. However, it also means that any
         # data between two quoted strings (ex: '"quote 1" non-quoted data
         # "quote 2"') will also be included.
-        return re.findall(r'\"(.*)\"', string)[0]
+        return re.findall(r'\"(.*)\"', quoted_string)[0]
     except KeyboardInterrupt as e:
         raise e
     except Exception:
@@ -176,7 +183,7 @@ def strings(filename, minimum=4):
     with BlockFile(filename) as f:
         while True:
             (data, dlen) = f.read_block()
-            if not data:
+            if dlen < 1:
                 break
 
             for c in data:
@@ -251,7 +258,7 @@ class StringFile(object):
     '''
 
     def __init__(self, fname, mode='r'):
-        self.string = fname
+        self.string = fname #bytes2str(fname)
         self.name = "String"
         self.args.size = len(self.string)
 
@@ -451,10 +458,10 @@ def BlockFile(fname, mode='r', subclass=io.FileIO, **kwargs):
 
             return n
 
-        def read(self, n=-1):
+        def read(self, n=-1, override=False):
             ''''
             Reads up to n bytes of data (or to EOF if n is not specified).
-            Will not read more than self.length bytes.
+            Will not read more than self.length bytes unless override == True.
 
             io.FileIO.read does not guaruntee that all requested data will be read;
             this method overrides io.FileIO.read and does guaruntee that all data will be read.
@@ -464,9 +471,10 @@ def BlockFile(fname, mode='r', subclass=io.FileIO, **kwargs):
             l = 0
             data = b''
 
-            if self.total_read < self.length:
+            if override == True or (self.total_read < self.length):
                 # Don't read more than self.length bytes from the file
-                if (self.total_read + n) > self.length:
+                # unless an override has been requested.
+                if override == False and (self.total_read + n) > self.length:
                     n = self.length - self.total_read
 
                 while n < 0 or l < n:
@@ -486,7 +494,7 @@ def BlockFile(fname, mode='r', subclass=io.FileIO, **kwargs):
             Peeks at data in file.
             '''
             pos = self.tell()
-            data = self.read(n)
+            data = self.read(n, override=True)
             self.seek(pos)
             return data
 

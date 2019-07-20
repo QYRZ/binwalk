@@ -1,4 +1,5 @@
 import os
+import zlib
 import struct
 import binwalk.core.plugin
 import binwalk.core.common
@@ -11,8 +12,7 @@ except ImportError as e:
 class RomFSCommon(object):
 
     def _read_next_word(self):
-        value = struct.unpack(
-            "%sL" % self.endianess, self.data[self.index:self.index + 4])[0]
+        value = struct.unpack("%sL" % self.endianness, self.data[self.index:self.index + 4])[0]
         self.index += 4
         return value
 
@@ -50,9 +50,9 @@ class RomFSEntry(RomFSCommon):
     DATA_MASK = 0x00000008
     COMPRESSED_MASK = 0x005B0000
 
-    def __init__(self, data, endianess="<"):
+    def __init__(self, data, endianness="<"):
         self.data = data
-        self.endianess = endianess
+        self.endianness = endianness
         self.index = 0
 
         self.type = self._read_next_word()
@@ -69,10 +69,10 @@ class RomFSDirStruct(RomFSCommon):
 
     SIZE = 0x20
 
-    def __init__(self, data, endianess="<"):
+    def __init__(self, data, endianness="<"):
         self.index = 0
         self.data = data
-        self.endianess = endianess
+        self.endianness = endianness
         self.directory = False
         self.uid = None
         self.ls = []
@@ -117,8 +117,8 @@ class RomFS(object):
     SUPERBLOCK_SIZE = 0x20
     FILE_ENTRY_SIZE = 0x20
 
-    def __init__(self, fname, endianess="<"):
-        self.endianess = endianess
+    def __init__(self, fname, endianness="<"):
+        self.endianness = endianness
         self.data = open(fname, "rb").read()
         self.entries = self._process_all_entries()
 
@@ -133,7 +133,12 @@ class RomFS(object):
         except KeyboardInterrupt as e:
             raise e
         except Exception as e:
-            pass
+            try:
+                data = zlib.decompress(data)
+            except KeyboardInterrupt as e:
+                raise e
+            except Exception as e:
+                pass
 
         return data
 
@@ -152,8 +157,7 @@ class RomFS(object):
 
         while True:
             try:
-                entry = RomFSEntry(
-                    self.data[offset:offset + self.FILE_ENTRY_SIZE], endianess=self.endianess)
+                entry = RomFSEntry(self.data[offset:offset + self.FILE_ENTRY_SIZE], endianness=self.endianness)
             except ValueError as e:
                 break
 
@@ -168,8 +172,7 @@ class RomFS(object):
 
             if entry.type & entry.DIR_STRUCT_MASK:
                 entries[entry.uid].type = "directory"
-                ds = RomFSDirStruct(
-                    self.data[entry.offset:entry.offset + entry.size], endianess=self.endianess)
+                ds = RomFSDirStruct(self.data[entry.offset:entry.offset + entry.size], endianness=self.endianness)
                 for (uid, name) in ds.ls:
                     if not uid in entries:
                         entries[uid] = FileContainer()
